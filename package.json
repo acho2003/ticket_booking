@@ -1,0 +1,33 @@
+{
+  "name": "bhutan-movie-booking",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run web\" \"npm run admin\"",
+    "db:migrate": "npm run db:migrate -w apps/backend",
+    "db:seed": "npm run db:seed -w apps/backend",
+    "mobile": "npm run dev -w apps/mobile",
+    "web": "npm run dev -w apps/web",
+    "admin": "npm run dev -w apps/admin",
+    "backend": "npm run dev -w apps/backend",
+    "build": "npm run build -w packages/shared && npm run build -w apps/backend && npm run build -w apps/web && npm run build -w apps/admin && npm run build -w apps/mobile",
+    "postinstall": "node scripts/repair-runtime-deps.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.16",
+    "concurrently": "^9.1.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "resolve-pkg-maps": "^1.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "expo": "~54",
+    "react-native": "0.81.5"
+  }
+}

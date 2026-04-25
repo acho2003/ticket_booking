@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Bhutan Movie Booking Platform",
+    "slug": "bhutan-movie-booking-platform",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0f766e"
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}
