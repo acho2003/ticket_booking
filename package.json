@@ -15,6 +15,8 @@
     "admin": "npm run dev -w apps/admin",
     "backend": "npm run dev -w apps/backend",
     "build": "npm run build -w packages/shared && npm run build -w apps/backend && npm run build -w apps/web && npm run build -w apps/admin && npm run build -w apps/mobile",
+    "render:build": "npm run build -w packages/shared && npm run build -w apps/backend",
+    "render:start": "npm run db:deploy -w apps/backend && npm run start -w apps/backend",
     "postinstall": "node scripts/repair-runtime-deps.mjs"
   },
   "devDependencies": {

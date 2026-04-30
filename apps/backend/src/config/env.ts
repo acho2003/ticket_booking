@@ -11,7 +11,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(8),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().default(5000),
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development")
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  CORS_ORIGIN: z.string().optional(),
+  PUBLIC_API_URL: z.string().url().optional(),
+  UPLOAD_DIR: z.string().optional()
 });
 
 export const env = envSchema.parse({

@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import morgan from "morgan";
 import { createRequire } from "node:module";
+import fs from "node:fs";
 import path from "node:path";
 
 import { env } from "./config/env.js";
@@ -13,15 +14,41 @@ import { getDatabaseErrorResponse } from "./utils/prisma-errors.js";
 const require = createRequire(import.meta.url);
 const helmet = require("helmet");
 
+const parseCorsOrigins = (value?: string) =>
+  value
+    ?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
+
 export const createApp = () => {
   const app = express();
+  const allowedOrigins = parseCorsOrigins(env.CORS_ORIGIN);
+  const uploadDirectory = path.resolve(env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads"));
 
-  app.use(helmet());
-  app.use(cors());
+  fs.mkdirSync(uploadDirectory, { recursive: true });
+
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" }
+    })
+  );
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(new Error(`CORS blocked origin: ${origin}`));
+      },
+      credentials: true
+    })
+  );
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
-  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  app.use("/uploads", express.static(uploadDirectory));
 
   app.get("/health", (_request, response) => {
     response.json({

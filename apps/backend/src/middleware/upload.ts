@@ -3,10 +3,11 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import type { RequestHandler } from "express";
 
+import { env } from "../config/env.js";
 import type { UploadedFile } from "../types/uploads.js";
 
 const require = createRequire(import.meta.url);
-const uploadDirectory = path.join(process.cwd(), "uploads");
+const uploadDirectory = path.resolve(env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads"));
 
 if (!fs.existsSync(uploadDirectory)) {
   fs.mkdirSync(uploadDirectory, { recursive: true });
