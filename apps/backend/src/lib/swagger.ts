@@ -28,7 +28,7 @@ export const getSwaggerBundle = (): SwaggerBundle | null => {
       definition: {
         openapi: "3.0.3",
         info: {
-          title: "Bhutan Movie Booking Platform API",
+          title: "Movi API",
           version: "1.0.0",
           description: "REST API for customer booking flows, theatre administration, and super admin operations."
         },

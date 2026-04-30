@@ -1,9 +1,11 @@
+import type { UploadedFile } from "../types/uploads.js";
+
 export interface FileStorageProvider {
-  save(file: Express.Multer.File): Promise<{ url: string; filename: string }>;
+  save(file: UploadedFile): Promise<{ url: string; filename: string }>;
 }
 
 class LocalFileStorageProvider implements FileStorageProvider {
-  async save(file: Express.Multer.File) {
+  async save(file: UploadedFile) {
     return {
       filename: file.filename,
       url: `/uploads/${file.filename}`

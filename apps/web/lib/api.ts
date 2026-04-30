@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
 type FetchOptions = {
   method?: string;
@@ -25,6 +25,18 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   }
 
   return payload.data as T;
+}
+
+export function resolveApiAssetUrl(path: string | null | undefined) {
+  if (!path) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export const getStoredToken = () =>

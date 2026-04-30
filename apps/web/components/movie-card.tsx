@@ -2,31 +2,73 @@ import Link from "next/link";
 
 import type { MovieSummary } from "@bhutan/shared";
 
+import { resolveApiAssetUrl } from "../lib/api";
+
 export function MovieCard({ movie }: { movie: MovieSummary }) {
   return (
     <article className="movie-card">
       <div className="movie-visual">
-        <img className="movie-poster" src={movie.posterUrl} alt={movie.title} />
+        {movie.posterUrl ? (
+          <img className="movie-poster" src={resolveApiAssetUrl(movie.posterUrl)} alt={movie.title} />
+        ) : (
+          <div
+            className="movie-poster"
+            style={{
+              background: "var(--bg-2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--muted)",
+              fontSize: "0.85rem"
+            }}
+          >
+            No poster
+          </div>
+        )}
+
         <div className="movie-overlay">
-          <span className="badge badge-dark">{movie.status.replace("_", " ")}</span>
-          <span className="movie-runtime">{movie.durationMinutes} mins</span>
+          <span className="badge dark">
+            {movie.status === "NOW_SHOWING"
+              ? "Now Showing"
+              : movie.status === "UPCOMING"
+                ? "Coming Soon"
+                : "Ended"}
+          </span>
+          <span className="movie-runtime">{movie.durationMinutes}m</span>
         </div>
       </div>
+
       <div className="movie-body">
         <div className="badge-row">
-          <span className="badge">{movie.genre}</span>
-          <span className="badge">{movie.language}</span>
+          {movie.genre ? <span className="badge">{movie.genre}</span> : null}
+          {movie.language ? <span className="badge">{movie.language}</span> : null}
         </div>
+
         <h3>{movie.title}</h3>
-        <p className="meta-line">
-          Rated {movie.rating} | Releases {new Date(movie.releaseDate).toLocaleDateString()}
+
+        <p className="movie-meta">
+          Rated {movie.rating} &middot;{" "}
+          {new Date(movie.releaseDate).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "numeric"
+          })}
         </p>
-        <p className="muted">{movie.description.slice(0, 110)}...</p>
-        <div className="cta-row">
-          <Link className="link-btn" href={`/movies/${movie.id}`}>
-            View Details
+
+        <p className="movie-meta">
+          First Class Nu.{Number(movie.regularPrice)} &middot; Balcony Nu.{Number(movie.vipPrice)}
+        </p>
+
+        <p className="movie-desc">
+          {movie.description.slice(0, 100)}
+          {movie.description.length > 100 ? "..." : ""}
+        </p>
+
+        <div className="movie-actions">
+          <Link className="link-btn secondary" href={`/movies/${movie.id}`}>
+            Details
           </Link>
-          <Link className="link-btn secondary" href={`/showtimes?movieId=${movie.id}`}>
+          <Link className="link-btn" href={`/showtimes?movieId=${movie.id}`}>
             Book Now
           </Link>
         </div>

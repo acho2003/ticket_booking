@@ -8,8 +8,9 @@ const showtimeBody = z.object({
   endTime: z.string().datetime(),
   regularPrice: z.number().nonnegative(),
   vipPrice: z.number().nonnegative(),
-  couplePrice: z.number().nonnegative(),
-  status: z.enum(["ACTIVE", "CANCELLED", "COMPLETED"]).optional()
+  couplePrice: z.number().nonnegative().optional(),
+  status: z.enum(["ACTIVE", "CANCELLED", "COMPLETED"]).optional(),
+  confirmTimeChangeWithBookings: z.boolean().optional()
 });
 
 export const listShowtimesSchema = z.object({

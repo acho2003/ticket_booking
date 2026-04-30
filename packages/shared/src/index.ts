@@ -1,4 +1,4 @@
-export const APP_NAME = "Bhutan Movie Booking Platform";
+export const APP_NAME = "Movi";
 
 export const USER_ROLES = ["CUSTOMER", "THEATRE_ADMIN", "SUPER_ADMIN"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
@@ -21,6 +21,9 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const SHOWTIME_STATUSES = ["ACTIVE", "CANCELLED", "COMPLETED"] as const;
 export type ShowtimeStatus = (typeof SHOWTIME_STATUSES)[number];
 
+export const SHOWTIME_BOOKING_STATUSES = ["UPCOMING", "OPEN", "CLOSED", "COMPLETED", "CANCELLED"] as const;
+export type ShowtimeBookingStatus = (typeof SHOWTIME_BOOKING_STATUSES)[number];
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -39,6 +42,9 @@ export interface MovieSummary {
   rating: string;
   posterUrl: string;
   trailerUrl?: string | null;
+  regularPrice: number;
+  vipPrice: number;
+  couplePrice: number;
   releaseDate: string;
   status: MovieStatus;
 }
@@ -52,6 +58,27 @@ export interface TheatreSummary {
   contactNumber: string;
 }
 
+export interface ScreenLayoutSeatOverride {
+  seatNumber: number;
+  seatType: SeatType;
+  isBlocked?: boolean;
+}
+
+export interface ScreenLayoutRow {
+  rowLabel: string;
+  seatCount: number;
+  leftOffset?: number;
+  rightOffset?: number;
+  aisleAfter?: number[];
+  defaultSeatType?: SeatType;
+  overrides?: ScreenLayoutSeatOverride[];
+}
+
+export interface ScreenLayoutConfig {
+  version: 1;
+  rows: ScreenLayoutRow[];
+}
+
 export interface ScreenSeat {
   id: string;
   screenId: string;
@@ -60,7 +87,13 @@ export interface ScreenSeat {
   seatCode: string;
   seatType: SeatType;
   isBlocked: boolean;
+  rowIndex?: number;
+  layoutColumn?: number;
+  rowWidth?: number;
   status?: SeatStatus;
+  canBook?: boolean;
+  bookingStatus?: ShowtimeBookingStatus;
+  bookingClosesAt?: string;
   price?: number;
 }
 
@@ -75,6 +108,10 @@ export interface ShowtimeSummary {
   vipPrice: number;
   couplePrice: number;
   status: ShowtimeStatus;
+  bookingStatus?: ShowtimeBookingStatus;
+  bookingClosesAt?: string;
+  canBook?: boolean;
+  serverTime?: string;
   movie?: MovieSummary;
   theatre?: TheatreSummary;
 }

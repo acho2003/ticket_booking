@@ -1,4 +1,4 @@
-export declare const APP_NAME = "Bhutan Movie Booking Platform";
+export declare const APP_NAME = "Movi";
 export declare const USER_ROLES: readonly ["CUSTOMER", "THEATRE_ADMIN", "SUPER_ADMIN"];
 export type UserRole = (typeof USER_ROLES)[number];
 export declare const MOVIE_STATUSES: readonly ["NOW_SHOWING", "UPCOMING", "ENDED"];

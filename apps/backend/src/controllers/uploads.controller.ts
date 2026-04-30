@@ -1,10 +1,13 @@
 import type { Request, Response } from "express";
 
 import { fileStorageProvider } from "../services/storage.service.js";
+import type { RequestWithFile } from "../types/uploads.js";
 
 export class UploadsController {
   async uploadImage(request: Request, response: Response) {
-    if (!request.file) {
+    const uploadedRequest = request as Request & RequestWithFile;
+
+    if (!uploadedRequest.file) {
       response.status(400).json({
         error: {
           message: "No file uploaded"
@@ -13,7 +16,7 @@ export class UploadsController {
       return;
     }
 
-    const file = await fileStorageProvider.save(request.file);
+    const file = await fileStorageProvider.save(uploadedRequest.file);
     response.status(201).json({ data: file });
   }
 }

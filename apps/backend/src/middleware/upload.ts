@@ -3,6 +3,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import type { RequestHandler } from "express";
 
+import type { UploadedFile } from "../types/uploads.js";
+
 const require = createRequire(import.meta.url);
 const uploadDirectory = path.join(process.cwd(), "uploads");
 
@@ -12,8 +14,8 @@ if (!fs.existsSync(uploadDirectory)) {
 
 type MulterModule = {
   diskStorage: (options: {
-    destination: (_request: unknown, _file: Express.Multer.File, callback: (error: null, destination: string) => void) => void;
-    filename: (_request: unknown, file: Express.Multer.File, callback: (error: null, filename: string) => void) => void;
+    destination: (_request: unknown, _file: UploadedFile, callback: (error: null, destination: string) => void) => void;
+    filename: (_request: unknown, file: UploadedFile, callback: (error: null, filename: string) => void) => void;
   }) => unknown;
   (options: { storage: unknown }): {
     single: (fieldName: string) => RequestHandler;

@@ -1,27 +1,29 @@
-import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { useCallback, useState } from "react";
+import { NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { LaunchSplash } from "./src/components/LaunchSplash";
 import { AppNavigator } from "./src/navigation/AppNavigator";
-
-const theme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: "#f6efe7",
-    primary: "#0f766e",
-    card: "#ffffff",
-    text: "#1f2937"
-  }
-};
+import { colors, navTheme } from "./src/lib/theme";
 
 export default function App() {
+  const [showLaunchSplash, setShowLaunchSplash] = useState(true);
+  const finishLaunchSplash = useCallback(() => setShowLaunchSplash(false), []);
+
   return (
     <SafeAreaProvider>
-      <NavigationContainer theme={theme}>
-        <StatusBar barStyle="dark-content" backgroundColor="#f6efe7" />
-        <AppNavigator />
-      </NavigationContainer>
+      {showLaunchSplash ? (
+        <>
+          <StatusBar barStyle="dark-content" backgroundColor={colors.page} />
+          <LaunchSplash onFinish={finishLaunchSplash} />
+        </>
+      ) : (
+        <NavigationContainer theme={navTheme}>
+          <StatusBar barStyle="dark-content" backgroundColor={colors.page} />
+          <AppNavigator />
+        </NavigationContainer>
+      )}
     </SafeAreaProvider>
   );
 }

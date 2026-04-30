@@ -5,28 +5,41 @@ import type { AuthUser } from "@bhutan/shared";
 import { prisma } from "../lib/prisma.js";
 import { formatBookingCode } from "../utils/booking-code.js";
 import { HttpError } from "../utils/http-error.js";
-import { resolveSeatPrice } from "../utils/seat-pricing.js";
+import { PLATFORM_SERVICE_FEE_NU, normalizeTwoClassPrices, resolveSeatPrice } from "../utils/pricing.js";
+import { getShowtimeBookingState } from "../utils/showtime-state.js";
 import { theatresService } from "./theatres.service.js";
 
 export class BookingsService {
   async create(user: AuthUser, input: { showtimeId: string; seatIds: string[] }) {
     const uniqueSeatIds = [...new Set(input.seatIds)];
 
-    return prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const showtime = await tx.showtime.findUnique({
-          where: { id: input.showtimeId },
-          include: {
-            screen: true
-          }
-        });
+    if (uniqueSeatIds.length === 0) {
+      throw new HttpError(400, "Please select at least one seat");
+    }
+
+    try {
+      return await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const showtime = await tx.showtime.findUnique({
+            where: { id: input.showtimeId }
+          });
 
         if (!showtime || showtime.status !== "ACTIVE") {
           throw new HttpError(404, "Active showtime not found");
         }
 
-        if (isBefore(showtime.startTime, new Date())) {
-          throw new HttpError(400, "Cannot book seats for a showtime that has already started");
+        const now = new Date();
+        const showtimeState = getShowtimeBookingState(showtime, now);
+
+        if (showtimeState.bookingStatus === "COMPLETED") {
+          await tx.showtime.update({
+            where: { id: showtime.id },
+            data: { status: "COMPLETED" }
+          });
+        }
+
+        if (!showtimeState.canBook) {
+          throw new HttpError(400, "Booking closed for this show.");
         }
 
         const seats = await tx.seat.findMany({
@@ -65,11 +78,11 @@ export class BookingsService {
           );
         }
 
-        const priceLookup = {
+        const priceLookup = normalizeTwoClassPrices({
           regularPrice: Number(showtime.regularPrice),
           vipPrice: Number(showtime.vipPrice),
           couplePrice: Number(showtime.couplePrice)
-        };
+        });
 
         const seatPayload = seats.map((seat) => ({
           seatId: seat.id,
@@ -77,7 +90,9 @@ export class BookingsService {
           price: resolveSeatPrice(seat.seatType, priceLookup)
         }));
 
-        const totalAmount = seatPayload.reduce((total, seat) => total + seat.price, 0);
+        const totalAmount =
+          seatPayload.reduce((total, seat) => total + seat.price, 0) +
+          PLATFORM_SERVICE_FEE_NU * seatPayload.length;
         const year = new Date().getFullYear();
 
         const sequence = await tx.bookingSequence.upsert({
@@ -110,10 +125,17 @@ export class BookingsService {
           include: this.bookingInclude
         });
 
-        return booking;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
+          return booking;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new HttpError(409, "Selected seats were just taken. Please refresh and choose again.");
+      }
+
+      throw error;
+    }
   }
 
   listMine(user: AuthUser) {

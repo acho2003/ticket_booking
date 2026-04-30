@@ -1,9 +1,11 @@
 import type { AuthUser } from "@bhutan/shared";
 
 import { prisma } from "../lib/prisma.js";
-import { resolveSeatPrice } from "../utils/seat-pricing.js";
+import { normalizeTwoClassPrices, resolveSeatPrice } from "../utils/pricing.js";
 import { theatresService } from "./theatres.service.js";
 import { HttpError } from "../utils/http-error.js";
+import { decorateSeatsWithLayout, type ScreenLayoutConfig } from "../utils/screen-layout.js";
+import { getShowtimeBookingState } from "../utils/showtime-state.js";
 
 export class SeatsService {
   async getScreenSeats(screenId: string) {
@@ -20,7 +22,7 @@ export class SeatsService {
       throw new HttpError(404, "Screen not found");
     }
 
-    return screen.seats;
+    return decorateSeatsWithLayout(screen.seats, screen.layoutConfig as ScreenLayoutConfig | null);
   }
 
   async getShowtimeSeats(showtimeId: string) {
@@ -49,6 +51,7 @@ export class SeatsService {
       throw new HttpError(404, "Showtime not found");
     }
 
+    const showtimeState = getShowtimeBookingState(showtime);
     const reservedSeatMap = new Map<string, "RESERVED" | "BOOKED">();
 
     for (const booking of showtime.bookings) {
@@ -57,15 +60,27 @@ export class SeatsService {
       }
     }
 
-    return showtime.screen.seats.map((seat) => ({
-      ...seat,
-      status: seat.isBlocked || seat.seatType === "BLOCKED" ? "BLOCKED" : reservedSeatMap.get(seat.id) ?? "AVAILABLE",
-      price: resolveSeatPrice(seat.seatType, {
-        regularPrice: Number(showtime.regularPrice),
-        vipPrice: Number(showtime.vipPrice),
-        couplePrice: Number(showtime.couplePrice)
-      })
-    }));
+    const priceLookup = normalizeTwoClassPrices({
+      regularPrice: Number(showtime.regularPrice),
+      vipPrice: Number(showtime.vipPrice),
+      couplePrice: Number(showtime.couplePrice)
+    });
+
+    return decorateSeatsWithLayout(showtime.screen.seats, showtime.screen.layoutConfig as ScreenLayoutConfig | null).map((seat) => {
+      const status =
+        seat.isBlocked || seat.seatType === "BLOCKED"
+          ? "BLOCKED"
+          : reservedSeatMap.get(seat.id) ?? (showtimeState.canBook ? "AVAILABLE" : "BOOKED");
+
+      return {
+        ...seat,
+        status,
+        bookingStatus: showtimeState.bookingStatus,
+        canBook: showtimeState.canBook,
+        bookingClosesAt: showtimeState.bookingClosesAt,
+        price: resolveSeatPrice(seat.seatType, priceLookup)
+      };
+    });
   }
 
   async updateSeat(

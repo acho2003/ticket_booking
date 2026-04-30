@@ -5,58 +5,75 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/page-header";
 import { adminApiFetch, getAdminToken } from "../../lib/api";
 
+const FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: "name",          label: "Theatre name",    placeholder: "e.g. Norling Cineplex"   },
+  { key: "city",          label: "City",            placeholder: "e.g. Thimphu"            },
+  { key: "location",      label: "Location",        placeholder: "Street / area"           },
+  { key: "description",   label: "Description",     placeholder: "Brief description"       },
+  { key: "contactNumber", label: "Contact number",  placeholder: "+975 …"                  }
+];
+
 export default function TheatreManagementPage() {
   const token = getAdminToken();
   const [theatres, setTheatres] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", city: "", location: "", description: "", contactNumber: "" });
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [form, setForm]         = useState({ name: "", city: "", location: "", description: "", contactNumber: "" });
+  const [message, setMessage]   = useState("");
+  const [error, setError]       = useState("");
 
   const load = async () => {
-    try {
-      const result = await adminApiFetch<any[]>("/theatres");
-      setTheatres(result);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load theatres");
-    }
+    const result = await adminApiFetch<any[]>("/theatres");
+    setTheatres(result);
   };
-
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => { void load().catch((e) => setError(String(e))); }, []);
 
   const createTheatre = async () => {
+    setMessage(""); setError("");
     try {
-      await adminApiFetch("/admin/theatres", {
-        method: "POST",
-        token,
-        body: form
-      });
-      setMessage("Theatre created successfully.");
-      setError("");
+      await adminApiFetch("/admin/theatres", { method: "POST", token, body: form });
+      setMessage("Theatre created.");
+      setForm({ name: "", city: "", location: "", description: "", contactNumber: "" });
       await load();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create theatre");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create theatre");
     }
   };
 
   return (
     <div className="grid">
-      <PageHeader title="Theatre Management" subtitle="Create theatres and manage core theatre information." />
-      <section className="grid two-column">
-        <div className="form-card">
-          <h3>Add Theatre</h3>
+      <PageHeader title="Theatres" subtitle="Create theatres and manage their core information." />
+
+      <div className="grid two-col">
+        {/* Form */}
+        <article className="form-card">
+          <div className="section-intro">
+            <span className="pill primary">New venue</span>
+            <h3>Add Theatre</h3>
+          </div>
           <div className="form-grid">
-            {Object.entries(form).map(([key, value]) => (
-              <input key={key} className="field" placeholder={key} value={value} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} />
+            {FIELDS.map(({ key, label, placeholder }) => (
+              <div key={key} className="field-group">
+                <label className="field-label" htmlFor={key}>{label}</label>
+                <input
+                  id={key}
+                  className="field"
+                  placeholder={placeholder}
+                  value={(form as any)[key]}
+                  onChange={(e) => setForm((c) => ({ ...c, [key]: e.target.value }))}
+                />
+              </div>
             ))}
-            {message ? <p className="success">{message}</p> : null}
-            {error ? <p className="error">{error}</p> : null}
+            {message && <p className="success">{message}</p>}
+            {error   && <p className="error">{error}</p>}
             <button className="btn" onClick={createTheatre}>Create Theatre</button>
           </div>
-        </div>
-        <div className="table-card">
-          <h3>Current Theatres</h3>
+        </article>
+
+        {/* Table */}
+        <article className="table-card">
+          <div className="section-intro">
+            <h3>Current Theatres</h3>
+            <p className="muted">{theatres.length} venue{theatres.length !== 1 ? "s" : ""} listed</p>
+          </div>
           <table className="table">
             <thead>
               <tr>
@@ -67,18 +84,21 @@ export default function TheatreManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {theatres.map((theatre) => (
-                <tr key={theatre.id}>
-                  <td>{theatre.name}</td>
-                  <td>{theatre.city}</td>
-                  <td>{theatre.location}</td>
-                  <td>{theatre.contactNumber}</td>
+              {theatres.length === 0 && (
+                <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--muted)", paddingTop: 24 }}>No theatres yet.</td></tr>
+              )}
+              {theatres.map((t) => (
+                <tr key={t.id}>
+                  <td style={{ fontWeight: 600 }}>{t.name}</td>
+                  <td>{t.city}</td>
+                  <td>{t.location}</td>
+                  <td>{t.contactNumber}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
+        </article>
+      </div>
     </div>
   );
 }

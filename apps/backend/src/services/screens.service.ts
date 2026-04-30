@@ -3,6 +3,7 @@ import type { AuthUser } from "@bhutan/shared";
 import { prisma } from "../lib/prisma.js";
 import { theatresService } from "./theatres.service.js";
 import { HttpError } from "../utils/http-error.js";
+import { buildDefaultLayoutConfig, buildSeatsFromLayout, type ScreenLayoutConfig } from "../utils/screen-layout.js";
 
 export class ScreensService {
   async listByTheatre(user: AuthUser, theatreId: string) {
@@ -75,14 +76,15 @@ export class ScreensService {
     user: AuthUser,
     screenId: string,
     input: {
-      totalRows: number;
-      totalColumns: number;
+      totalRows?: number;
+      totalColumns?: number;
       seatTypeMap?: Array<{
         rowLabel: string;
         seatNumber: number;
         seatType: "REGULAR" | "VIP" | "COUPLE" | "BLOCKED";
         isBlocked?: boolean;
       }>;
+      layout?: ScreenLayoutConfig;
     }
   ) {
     const screen = await prisma.screen.findUnique({
@@ -110,42 +112,28 @@ export class ScreensService {
       throw new HttpError(409, "Cannot regenerate seats for a screen that already has bookings");
     }
 
-    const rowLabels = Array.from({ length: input.totalRows }, (_, index) =>
-      String.fromCharCode(65 + index)
-    );
+    let layoutConfig: ScreenLayoutConfig;
+    let generatedLayout: ReturnType<typeof buildSeatsFromLayout> | null = null;
 
-    const seatTypeLookup = new Map(
-      (input.seatTypeMap ?? []).map((entry) => [
-        `${entry.rowLabel}-${entry.seatNumber}`,
-        entry
-      ])
-    );
+    try {
+      layoutConfig =
+        input.layout ??
+        buildDefaultLayoutConfig(input.totalRows ?? 0, input.totalColumns ?? 0, input.seatTypeMap);
+      generatedLayout = buildSeatsFromLayout(screenId, layoutConfig);
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : "Invalid seat layout");
+    }
 
-    const seats = rowLabels.flatMap((rowLabel) =>
-      Array.from({ length: input.totalColumns }, (_, seatIndex) => {
-        const seatNumber = seatIndex + 1;
-        const override = seatTypeLookup.get(`${rowLabel}-${seatNumber}`);
-        const seatType = override?.seatType ?? "REGULAR";
-        const isBlocked = override?.isBlocked ?? seatType === "BLOCKED";
-
-        return {
-          screenId,
-          rowLabel,
-          seatNumber,
-          seatCode: `${rowLabel}${seatNumber}`,
-          seatType,
-          isBlocked
-        };
-      })
-    );
+    const { config, seats, totalRows, totalColumns } = generatedLayout!;
 
     await prisma.$transaction([
       prisma.seat.deleteMany({ where: { screenId } }),
       prisma.screen.update({
         where: { id: screenId },
         data: {
-          totalRows: input.totalRows,
-          totalColumns: input.totalColumns
+          totalRows,
+          totalColumns,
+          layoutConfig: config
         }
       }),
       prisma.seat.createMany({ data: seats })

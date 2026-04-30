@@ -5,33 +5,50 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const createSeatData = (
-  screenId: string,
-  totalRows: number,
-  totalColumns: number,
-  vipRows: string[],
-  coupleRows: string[]
-) => {
-  const rows = Array.from({ length: totalRows }, (_, index) => String.fromCharCode(65 + index));
+type SeedSeatType = "REGULAR" | "VIP" | "COUPLE" | "BLOCKED";
 
-  return rows.flatMap((rowLabel) =>
-    Array.from({ length: totalColumns }, (_, seatIndex) => {
+type SeedLayoutRow = {
+  rowLabel: string;
+  seatCount: number;
+  leftOffset?: number;
+  rightOffset?: number;
+  aisleAfter?: number[];
+  defaultSeatType?: SeedSeatType;
+  overrides?: Array<{
+    seatNumber: number;
+    seatType: SeedSeatType;
+    isBlocked?: boolean;
+  }>;
+};
+
+type SeedLayoutConfig = {
+  version: 1;
+  rows: SeedLayoutRow[];
+};
+
+const buildSeatLayout = (rows: SeedLayoutRow[]): SeedLayoutConfig => ({
+  version: 1,
+  rows
+});
+
+const createSeatData = (screenId: string, layout: SeedLayoutConfig) =>
+  layout.rows.flatMap((row) =>
+    Array.from({ length: row.seatCount }, (_, seatIndex) => {
       const seatNumber = seatIndex + 1;
-      const isVip = vipRows.includes(rowLabel);
-      const isCouple = coupleRows.includes(rowLabel);
-      const seatType = isCouple ? "COUPLE" : isVip ? "VIP" : "REGULAR";
+      const override = row.overrides?.find((entry) => entry.seatNumber === seatNumber);
+      const seatType = override?.seatType ?? row.defaultSeatType ?? "REGULAR";
+      const isBlocked = override?.isBlocked ?? seatType === "BLOCKED";
 
       return {
         screenId,
-        rowLabel,
+        rowLabel: row.rowLabel,
         seatNumber,
-        seatCode: `${rowLabel}${seatNumber}`,
+        seatCode: `${row.rowLabel}${seatNumber}`,
         seatType,
-        isBlocked: false
+        isBlocked
       } as const;
     })
   );
-};
 
 async function main() {
   await prisma.bookingSeat.deleteMany();
@@ -116,38 +133,94 @@ async function main() {
     ]
   });
 
+  const screen1Layout = buildSeatLayout([
+    { rowLabel: "A", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "B", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "C", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "D", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "E", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "F", seatCount: 12, aisleAfter: [6] },
+    { rowLabel: "G", seatCount: 10, leftOffset: 1, aisleAfter: [5], defaultSeatType: "VIP" },
+    { rowLabel: "H", seatCount: 8, leftOffset: 2, aisleAfter: [4], defaultSeatType: "COUPLE" }
+  ]);
+
+  const screen2Layout = buildSeatLayout([
+    {
+      rowLabel: "A",
+      seatCount: 8,
+      leftOffset: 3,
+      aisleAfter: [4],
+      overrides: [
+        { seatNumber: 1, seatType: "BLOCKED", isBlocked: true },
+        { seatNumber: 8, seatType: "BLOCKED", isBlocked: true }
+      ]
+    },
+    { rowLabel: "B", seatCount: 8, leftOffset: 3, aisleAfter: [4] },
+    { rowLabel: "C", seatCount: 14, aisleAfter: [7] },
+    { rowLabel: "D", seatCount: 14, aisleAfter: [7] },
+    { rowLabel: "E", seatCount: 14, aisleAfter: [7] },
+    {
+      rowLabel: "F",
+      seatCount: 14,
+      aisleAfter: [7],
+      overrides: [
+        { seatNumber: 6, seatType: "VIP" },
+        { seatNumber: 7, seatType: "VIP" },
+        { seatNumber: 8, seatType: "VIP" },
+        { seatNumber: 9, seatType: "VIP" }
+      ]
+    },
+    { rowLabel: "G", seatCount: 10, leftOffset: 2, aisleAfter: [5], defaultSeatType: "VIP" },
+    { rowLabel: "H", seatCount: 10, leftOffset: 2, aisleAfter: [5], defaultSeatType: "VIP" }
+  ]);
+
+  const screen3Layout = buildSeatLayout([
+    { rowLabel: "A", seatCount: 10, aisleAfter: [5] },
+    { rowLabel: "B", seatCount: 10, aisleAfter: [5] },
+    { rowLabel: "C", seatCount: 10, aisleAfter: [5] },
+    { rowLabel: "D", seatCount: 10, aisleAfter: [5] },
+    { rowLabel: "E", seatCount: 9, leftOffset: 1, aisleAfter: [4] },
+    { rowLabel: "F", seatCount: 9, leftOffset: 1, aisleAfter: [4] },
+    { rowLabel: "G", seatCount: 6, leftOffset: 2, aisleAfter: [3], defaultSeatType: "VIP" },
+    { rowLabel: "H", seatCount: 6, leftOffset: 2, aisleAfter: [3], defaultSeatType: "VIP" },
+    { rowLabel: "I", seatCount: 4, leftOffset: 3, aisleAfter: [2], defaultSeatType: "COUPLE" }
+  ]);
+
   const [screen1, screen2, screen3] = await Promise.all([
     prisma.screen.create({
       data: {
         theatreId: thimphuTheatre.id,
         name: "Screen 1",
-        totalRows: 10,
-        totalColumns: 12
+        totalRows: screen1Layout.rows.length,
+        totalColumns: 13,
+        layoutConfig: screen1Layout
       }
     }),
     prisma.screen.create({
       data: {
         theatreId: thimphuTheatre.id,
         name: "Screen 2",
-        totalRows: 8,
-        totalColumns: 10
+        totalRows: screen2Layout.rows.length,
+        totalColumns: 15,
+        layoutConfig: screen2Layout
       }
     }),
     prisma.screen.create({
       data: {
         theatreId: paroTheatre.id,
         name: "Screen A",
-        totalRows: 9,
-        totalColumns: 10
+        totalRows: screen3Layout.rows.length,
+        totalColumns: 11,
+        layoutConfig: screen3Layout
       }
     })
   ]);
 
   await prisma.seat.createMany({
     data: [
-      ...createSeatData(screen1.id, 10, 12, ["A", "B"], ["J"]),
-      ...createSeatData(screen2.id, 8, 10, ["A"], ["H"]),
-      ...createSeatData(screen3.id, 9, 10, ["A", "B"], ["I"])
+      ...createSeatData(screen1.id, screen1Layout),
+      ...createSeatData(screen2.id, screen2Layout),
+      ...createSeatData(screen3.id, screen3Layout)
     ]
   });
 
@@ -162,6 +235,9 @@ async function main() {
         rating: "PG",
         posterUrl: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&q=80",
         trailerUrl: "https://www.youtube.com/watch?v=E1x-lS0aP8Q",
+        regularPrice: 250,
+        vipPrice: 350,
+        couplePrice: 600,
         releaseDate: addDays(new Date(), -20),
         status: "NOW_SHOWING"
       }
@@ -176,6 +252,9 @@ async function main() {
         rating: "PG-13",
         posterUrl: "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=800&q=80",
         trailerUrl: "https://www.youtube.com/watch?v=H3EAEuDq4S8",
+        regularPrice: 220,
+        vipPrice: 320,
+        couplePrice: 550,
         releaseDate: addDays(new Date(), -5),
         status: "NOW_SHOWING"
       }
@@ -190,6 +269,9 @@ async function main() {
         rating: "PG-13",
         posterUrl: "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?auto=format&fit=crop&w=800&q=80",
         trailerUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        regularPrice: 300,
+        vipPrice: 400,
+        couplePrice: 700,
         releaseDate: addDays(new Date(), 14),
         status: "UPCOMING"
       }
@@ -273,7 +355,7 @@ async function main() {
     data: {
       userId: customer.id,
       showtimeId: showtime1.id,
-      bookingCode: `BMB-${now.getFullYear()}-000001`,
+      bookingCode: `MOVI-${now.getFullYear()}-000001`,
       totalAmount: 500,
       status: "RESERVED",
       paymentStatus: "PAY_AT_COUNTER",

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "../../components/page-header";
-import { adminApiFetch, getAdminToken } from "../../lib/api";
+import { adminApiFetch, getAdminToken, resolveAdminAssetUrl, uploadAdminImage } from "../../lib/api";
+
+const STATUS_OPTIONS = ["NOW_SHOWING", "UPCOMING", "ENDED"] as const;
 
 const initialForm = {
   title: "",
@@ -14,313 +16,502 @@ const initialForm = {
   rating: "PG",
   posterUrl: "",
   trailerUrl: "",
+  regularPrice: 250,
+  vipPrice: 350,
+  couplePrice: 350,
   releaseDate: "",
   status: "NOW_SHOWING"
+} as const;
+
+type MovieForm = {
+  title: string;
+  description: string;
+  genre: string;
+  language: string;
+  durationMinutes: number;
+  rating: string;
+  posterUrl: string;
+  trailerUrl: string;
+  regularPrice: number;
+  vipPrice: number;
+  couplePrice: number;
+  releaseDate: string;
+  status: (typeof STATUS_OPTIONS)[number];
 };
 
-const statusOptions = ["NOW_SHOWING", "UPCOMING", "ENDED"];
+type MovieRecord = {
+  id: string;
+  title: string;
+  description: string;
+  genre: string;
+  language: string;
+  durationMinutes: number;
+  rating: string;
+  posterUrl: string;
+  trailerUrl?: string | null;
+  regularPrice: number;
+  vipPrice: number;
+  couplePrice: number;
+  releaseDate: string;
+  status: (typeof STATUS_OPTIONS)[number];
+};
+
+const statusLabel: Record<(typeof STATUS_OPTIONS)[number], string> = {
+  NOW_SHOWING: "Now Showing",
+  UPCOMING: "Upcoming",
+  ENDED: "Ended"
+};
+
+function toDateInput(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function normalizeForm(form: MovieForm) {
+  return {
+    ...form,
+    durationMinutes: Number(form.durationMinutes),
+    couplePrice: Number(form.vipPrice),
+    releaseDate: new Date(form.releaseDate).toISOString()
+  };
+}
 
 export default function MoviesManagementPage() {
   const token = getAdminToken();
-  const [movies, setMovies] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [movies, setMovies] = useState<MovieRecord[]>([]);
+  const [form, setForm] = useState<MovieForm>({ ...initialForm });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [form, setForm] = useState(initialForm);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const statusCounts = useMemo(() => {
-    return {
-      NOW_SHOWING: movies.filter((movie) => movie.status === "NOW_SHOWING").length,
-      UPCOMING: movies.filter((movie) => movie.status === "UPCOMING").length,
-      ENDED: movies.filter((movie) => movie.status === "ENDED").length
-    };
-  }, [movies]);
+  const counts = useMemo(
+    () => ({
+      total: movies.length,
+      nowShowing: movies.filter((movie) => movie.status === "NOW_SHOWING").length,
+      upcoming: movies.filter((movie) => movie.status === "UPCOMING").length,
+      ended: movies.filter((movie) => movie.status === "ENDED").length
+    }),
+    [movies]
+  );
 
   const load = async () => {
-    try {
-      const result = await adminApiFetch<any[]>("/movies");
-      setMovies(result);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load movies");
-    }
+    const result = await adminApiFetch<MovieRecord[]>("/movies");
+    setMovies(result);
   };
 
   useEffect(() => {
-    void load();
+    void load().catch((requestError) =>
+      setError(requestError instanceof Error ? requestError.message : "Failed to load movies")
+    );
   }, []);
 
-  const updateField = (key: keyof typeof initialForm, value: string | number) => {
-    setForm((current) => ({ ...current, [key]: value }));
+  const update =
+    (key: keyof MovieForm) =>
+    (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      const value = key === "durationMinutes" ? Number(event.target.value) : event.target.value;
+      setForm((current) => ({ ...current, [key]: value }));
+    };
+
+  const clearForm = () => {
+    setForm({ ...initialForm });
+    setEditingId(null);
   };
 
-  const createMovie = async () => {
+  const resetForm = () => {
+    clearForm();
+    setMessage("");
+    setError("");
+  };
+
+  const beginEdit = (movie: MovieRecord) => {
+    setEditingId(movie.id);
+    setMessage("");
+    setError("");
+    setForm({
+      title: movie.title,
+      description: movie.description,
+      genre: movie.genre,
+      language: movie.language,
+      durationMinutes: movie.durationMinutes,
+      rating: movie.rating,
+      posterUrl: movie.posterUrl,
+      trailerUrl: movie.trailerUrl ?? "",
+      regularPrice: Number(movie.regularPrice),
+      vipPrice: Number(movie.vipPrice),
+      couplePrice: Number(movie.vipPrice),
+      releaseDate: toDateInput(movie.releaseDate),
+      status: movie.status
+    });
+  };
+
+  const saveMovie = async () => {
+    setSaving(true);
     setMessage("");
     setError("");
 
     try {
-      await adminApiFetch("/admin/movies", {
-        method: "POST",
-        token,
-        body: {
-          ...form,
-          durationMinutes: Number(form.durationMinutes),
-          releaseDate: new Date(form.releaseDate).toISOString()
-        }
-      });
+      if (editingId) {
+        await adminApiFetch(`/admin/movies/${editingId}`, {
+          method: "PATCH",
+          token,
+          body: normalizeForm(form)
+        });
+        clearForm();
+        setMessage("Movie updated successfully.");
+      } else {
+        await adminApiFetch("/admin/movies", {
+          method: "POST",
+          token,
+          body: normalizeForm(form)
+        });
+        clearForm();
+        setMessage("Movie created successfully.");
+      }
 
-      setMessage("Movie created successfully.");
-      setForm(initialForm);
       await load();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create movie");
+      setError(requestError instanceof Error ? requestError.message : "Failed to save movie");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePosterUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const uploaded = await uploadAdminImage(file, token);
+      setForm((current) => ({ ...current, posterUrl: uploaded.url }));
+      setMessage("Poster uploaded successfully.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to upload poster");
+    } finally {
+      setUploading(false);
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  };
+
+  const deleteMovie = async (movie: MovieRecord) => {
+    const confirmDelete = window.confirm(
+      `Delete "${movie.title}"? This should only be used for titles that have finished screening.`
+    );
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    setDeletingId(movie.id);
+    setMessage("");
+    setError("");
+
+    try {
+      await adminApiFetch(`/admin/movies/${movie.id}`, {
+        method: "DELETE",
+        token
+      });
+      if (editingId === movie.id) {
+        clearForm();
+      }
+      setMessage("Movie deleted successfully.");
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to delete movie");
+    } finally {
+      setDeletingId(null);
     }
   };
 
   return (
     <div className="grid">
       <PageHeader
-        title="Movies Management"
-        subtitle="Create polished movie listings with the right poster, trailer, runtime, and release status."
+        title="Movies"
+        subtitle="Create, update, and retire movie listings. Upload posters directly here, attach trailer links, and only delete titles once screening is finished."
       />
 
-      <section className="grid stats-grid">
+      <div className="grid stats-grid">
         {[
-          ["Catalog total", movies.length, "All movies available in the platform"],
-          ["Now showing", statusCounts.NOW_SHOWING, "Titles customers can book today"],
-          ["Upcoming", statusCounts.UPCOMING, "Titles that are announced but not live yet"],
-          ["Ended", statusCounts.ENDED, "Titles kept for history and reporting"]
+          ["Total", counts.total, "All movies"],
+          ["Now Showing", counts.nowShowing, "Live to customers"],
+          ["Upcoming", counts.upcoming, "Announced releases"],
+          ["Ended", counts.ended, "Ready for archive"]
         ].map(([label, value, hint]) => (
           <article key={label} className="stat-card">
-            <span className="pill">{label}</span>
-            <h3>{value}</h3>
-            <p className="muted">{hint}</p>
+            <div className="stat-card-label">{label}</div>
+            <div className="stat-card-value">{value}</div>
+            <div className="stat-card-hint">{hint}</div>
           </article>
         ))}
-      </section>
+      </div>
 
-      <section className="grid two-column">
+      <div className="grid two-col">
         <article className="form-card">
           <div className="section-intro">
-            <span className="pill">New release</span>
-            <h3>Create Movie</h3>
-            <p className="muted">
-              Add the public-facing information customers will see across the website and mobile app.
-            </p>
+            <span className="pill primary">{editingId ? "Editing" : "New release"}</span>
+            <h3>{editingId ? "Edit Movie" : "Create Movie"}</h3>
+            <p className="muted">Manage the customer-facing listing without changing the underlying API structure.</p>
           </div>
 
           <div className="form-grid">
             <div className="field-group">
-              <label className="field-label" htmlFor="title">Movie title</label>
-              <input
-                id="title"
-                className="field"
-                placeholder="Example: The Thunder Dragon"
-                value={form.title}
-                onChange={(event) => updateField("title", event.target.value)}
-              />
+              <label className="field-label" htmlFor="title">
+                Title
+              </label>
+              <input id="title" className="field" value={form.title} onChange={update("title")} placeholder="e.g. The Monk and the Gun" />
             </div>
 
             <div className="form-split">
               <div className="field-group">
-                <label className="field-label" htmlFor="genre">Genre</label>
-                <input
-                  id="genre"
-                  className="field"
-                  placeholder="Action, Drama, Comedy"
-                  value={form.genre}
-                  onChange={(event) => updateField("genre", event.target.value)}
-                />
+                <label className="field-label" htmlFor="genre">
+                  Genre
+                </label>
+                <input id="genre" className="field" value={form.genre} onChange={update("genre")} placeholder="Drama, Adventure..." />
               </div>
-
               <div className="field-group">
-                <label className="field-label" htmlFor="language">Language</label>
-                <input
-                  id="language"
-                  className="field"
-                  placeholder="Dzongkha, English, Hindi"
-                  value={form.language}
-                  onChange={(event) => updateField("language", event.target.value)}
-                />
+                <label className="field-label" htmlFor="language">
+                  Language
+                </label>
+                <input id="language" className="field" value={form.language} onChange={update("language")} placeholder="Dzongkha, English..." />
               </div>
             </div>
 
             <div className="form-split">
               <div className="field-group">
-                <label className="field-label" htmlFor="duration">Duration in minutes</label>
-                <input
-                  id="duration"
-                  className="field"
-                  type="number"
-                  min={1}
-                  value={form.durationMinutes}
-                  onChange={(event) => updateField("durationMinutes", Number(event.target.value))}
-                />
+                <label className="field-label" htmlFor="duration">
+                  Duration (min)
+                </label>
+                <input id="duration" className="field" type="number" min={1} value={form.durationMinutes} onChange={update("durationMinutes")} />
               </div>
-
               <div className="field-group">
-                <label className="field-label" htmlFor="rating">Audience rating</label>
-                <input
-                  id="rating"
-                  className="field"
-                  placeholder="PG, PG-13, 16+"
-                  value={form.rating}
-                  onChange={(event) => updateField("rating", event.target.value)}
-                />
+                <label className="field-label" htmlFor="rating">
+                  Rating
+                </label>
+                <input id="rating" className="field" value={form.rating} onChange={update("rating")} placeholder="PG, PG-13..." />
               </div>
             </div>
 
             <div className="form-split">
               <div className="field-group">
-                <label className="field-label" htmlFor="releaseDate">Release date</label>
-                <input
-                  id="releaseDate"
-                  className="field"
-                  type="date"
-                  value={form.releaseDate}
-                  onChange={(event) => updateField("releaseDate", event.target.value)}
-                />
+                <label className="field-label" htmlFor="releaseDate">
+                  Release date
+                </label>
+                <input id="releaseDate" className="field" type="date" value={form.releaseDate} onChange={update("releaseDate")} />
               </div>
-
               <div className="field-group">
-                <label className="field-label" htmlFor="status">Movie status</label>
-                <select
-                  id="status"
-                  className="select"
-                  value={form.status}
-                  onChange={(event) => updateField("status", event.target.value)}
-                >
-                  {statusOptions.map((status) => (
+                <label className="field-label" htmlFor="status">
+                  Status
+                </label>
+                <select id="status" className="select" value={form.status} onChange={update("status")}>
+                  {STATUS_OPTIONS.map((status) => (
                     <option key={status} value={status}>
-                      {status.replace("_", " ")}
+                      {statusLabel[status]}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            <div className="field-group">
-              <label className="field-label" htmlFor="posterUrl">Poster URL</label>
-              <input
-                id="posterUrl"
-                className="field"
-                placeholder="https://..."
-                value={form.posterUrl}
-                onChange={(event) => updateField("posterUrl", event.target.value)}
-              />
+            <div className="form-split">
+              <div className="field-group">
+                <label className="field-label" htmlFor="regularPrice">
+                  First Class price
+                </label>
+                <input id="regularPrice" className="field" type="number" min={0} value={form.regularPrice} onChange={update("regularPrice")} />
+              </div>
+              <div className="field-group">
+                <label className="field-label" htmlFor="vipPrice">
+                  Balcony price
+                </label>
+                <input id="vipPrice" className="field" type="number" min={0} value={form.vipPrice} onChange={(event) => setForm((current) => ({ ...current, vipPrice: Number(event.target.value), couplePrice: Number(event.target.value) }))} />
+              </div>
             </div>
 
             <div className="field-group">
-              <label className="field-label" htmlFor="trailerUrl">Trailer URL</label>
-              <input
-                id="trailerUrl"
-                className="field"
-                placeholder="https://youtube.com/..."
-                value={form.trailerUrl}
-                onChange={(event) => updateField("trailerUrl", event.target.value)}
-              />
+              <label className="field-label">Poster</label>
+              <div className="btn-row">
+                <button className="btn secondary" type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? "Uploading..." : "Upload Poster"}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handlePosterUpload}
+                />
+              </div>
+              <input className="field" placeholder="https://... or uploaded image path" value={form.posterUrl} onChange={update("posterUrl")} />
             </div>
 
             <div className="field-group">
-              <label className="field-label" htmlFor="description">Description</label>
-              <textarea
-                id="description"
-                className="textarea"
-                rows={5}
-                placeholder="Write a short description that helps customers decide quickly."
-                value={form.description}
-                onChange={(event) => updateField("description", event.target.value)}
-              />
+              <label className="field-label" htmlFor="trailerUrl">
+                Trailer URL
+              </label>
+              <input id="trailerUrl" className="field" value={form.trailerUrl} onChange={update("trailerUrl")} placeholder="https://youtube.com/watch?v=..." />
+            </div>
+
+            <div className="field-group">
+              <label className="field-label" htmlFor="description">
+                Description
+              </label>
+              <textarea id="description" className="textarea" rows={5} value={form.description} onChange={update("description")} placeholder="Add the synopsis customers will read before booking..." />
             </div>
 
             {message ? <p className="success">{message}</p> : null}
             {error ? <p className="error">{error}</p> : null}
 
             <div className="btn-row">
-              <button className="btn" onClick={createMovie}>Create Movie</button>
-              <button className="btn secondary" onClick={() => setForm(initialForm)}>Reset Form</button>
+              <button className="btn" onClick={saveMovie} disabled={saving}>
+                {saving ? "Saving..." : editingId ? "Update Movie" : "Create Movie"}
+              </button>
+              <button className="btn ghost sm" onClick={resetForm} disabled={saving}>
+                {editingId ? "Cancel Edit" : "Reset"}
+              </button>
             </div>
           </div>
         </article>
 
-        <article className="report-card report-highlight">
+        <article className="report-card">
           <div className="section-intro">
-            <span className="pill">Live preview</span>
-            <h3>How this listing will feel</h3>
-            <p className="muted">
-              Use this panel to sanity-check the poster, metadata, and short description before publishing.
-            </p>
+            <span className="pill primary">Live preview</span>
+            <h3>How customers will see it</h3>
           </div>
 
-          <div className="movie-preview-card">
+          <div className="movie-preview">
             {form.posterUrl ? (
-              <img className="movie-preview-poster" src={form.posterUrl} alt={form.title || "Movie poster preview"} />
+              <img className="movie-preview-poster" src={resolveAdminAssetUrl(form.posterUrl)} alt={form.title || "Poster preview"} />
             ) : (
               <div className="movie-preview-placeholder">Poster preview</div>
             )}
 
             <div className="stack">
-              <div className="badge-row">
-                <span className="pill">{form.status.replace("_", " ")}</span>
-                <span className="pill">{form.genre || "Genre"}</span>
-                <span className="pill">{form.language || "Language"}</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className="pill primary">{statusLabel[form.status]}</span>
+                {form.genre ? <span className="pill default">{form.genre}</span> : null}
+                {form.language ? <span className="pill default">{form.language}</span> : null}
               </div>
 
               <div>
-                <h3>{form.title || "Untitled movie"}</h3>
-                <p className="muted">
-                  Rated {form.rating || "PG"} | {form.durationMinutes || 0} mins
+                <h3 style={{ fontSize: "1rem" }}>{form.title || "Untitled movie"}</h3>
+                <p className="muted" style={{ fontSize: "0.78rem", marginTop: 2 }}>
+                  Rated {form.rating || "PG"} · {form.durationMinutes || 0} min
+                </p>
+                <p className="muted" style={{ fontSize: "0.78rem", marginTop: 6 }}>
+                  First Class Nu. {form.regularPrice} · Balcony Nu. {form.vipPrice}
                 </p>
               </div>
 
-              <p className="muted">
-                {form.description || "Add a description to preview how your listing will read to customers."}
+              <p className="muted" style={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
+                {form.description || "Add a description to preview how it reads to customers."}
               </p>
 
-              <div className="quick-links">
-                <span className="btn-link">Poster ready</span>
-                <span className="btn-link">Counter booking flow</span>
-                <span className="btn-link">Public catalog</span>
-              </div>
+              {form.trailerUrl ? (
+                <a className="btn-link" href={form.trailerUrl} target="_blank" rel="noreferrer">
+                  Open trailer
+                </a>
+              ) : null}
             </div>
           </div>
         </article>
-      </section>
+      </div>
 
-      <section className="table-card">
+      <article className="table-card">
         <div className="section-intro">
-          <span className="pill">Catalog view</span>
-          <h3>Movie Catalog</h3>
-          <p className="muted">
-            A quick scan of the live movie library, including poster coverage and release readiness.
-          </p>
+          <span className="pill primary">Catalog</span>
+          <h3>Movie Library</h3>
+          <p className="muted">Use edit for corrections or status changes. Delete is reserved for ended titles.</p>
         </div>
 
         <div className="catalog-list">
-          {movies.map((movie) => (
-            <article key={movie.id} className="catalog-row">
-              <div className="catalog-poster-wrap">
-                {movie.posterUrl ? (
-                  <img className="catalog-poster" src={movie.posterUrl} alt={movie.title} />
-                ) : (
-                  <div className="catalog-poster placeholder">No poster</div>
-                )}
-              </div>
+          {movies.length === 0 ? (
+            <div className="empty-state">
+              <p>No movies yet. Create one above.</p>
+            </div>
+          ) : null}
 
-              <div className="catalog-copy">
-                <div className="catalog-header">
-                  <h4>{movie.title}</h4>
-                  <span className="pill">{movie.status.replace("_", " ")}</span>
+          {movies.map((movie) => {
+            const canDelete = movie.status === "ENDED";
+
+            return (
+              <div key={movie.id} className="catalog-row">
+                <div className="catalog-poster-wrap">
+                  {movie.posterUrl ? (
+                    <img className="catalog-poster" src={resolveAdminAssetUrl(movie.posterUrl)} alt={movie.title} />
+                  ) : (
+                    <div className="catalog-poster-placeholder">No poster</div>
+                  )}
                 </div>
-                <p className="muted">{movie.description?.slice(0, 140) || "No description added yet."}</p>
-                <div className="meta-row">
-                  <span className="btn-link">{movie.genre}</span>
-                  <span className="btn-link">{movie.language}</span>
-                  <span className="btn-link">{movie.durationMinutes} mins</span>
+
+                <div className="catalog-copy">
+                  <div className="catalog-header">
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <h4>{movie.title}</h4>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <span className="pill primary">{statusLabel[movie.status]}</span>
+                        {movie.genre ? <span className="pill default">{movie.genre}</span> : null}
+                        {movie.language ? <span className="pill default">{movie.language}</span> : null}
+                        <span className="pill default">{movie.durationMinutes} min</span>
+                        <span className="pill default">First Class Nu. {Number(movie.regularPrice)} / Balcony Nu. {Number(movie.vipPrice)}</span>
+                      </div>
+                    </div>
+
+                    <div className="btn-row">
+                      <button className="btn secondary sm" onClick={() => beginEdit(movie)}>
+                        Edit
+                      </button>
+                      <button
+                        className="btn danger sm"
+                        onClick={() => deleteMovie(movie)}
+                        disabled={!canDelete || deletingId === movie.id}
+                        title={canDelete ? "Delete movie" : "Mark the movie as ended before deleting it"}
+                      >
+                        {deletingId === movie.id ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="muted" style={{ fontSize: "0.82rem" }}>
+                    {movie.description?.slice(0, 170) || "No description."}
+                  </p>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <span className="muted" style={{ fontSize: "0.78rem" }}>
+                      Release {new Date(movie.releaseDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                    {movie.trailerUrl ? (
+                      <a className="btn-link" href={movie.trailerUrl} target="_blank" rel="noreferrer">
+                        Trailer
+                      </a>
+                    ) : null}
+                    {!canDelete ? (
+                      <span className="muted" style={{ fontSize: "0.78rem" }}>
+                        Delete unlocks once status is Ended.
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </article>
-          ))}
+            );
+          })}
         </div>
-      </section>
+      </article>
     </div>
   );
 }

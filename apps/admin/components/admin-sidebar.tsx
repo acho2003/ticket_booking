@@ -5,54 +5,79 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { clearAdminToken } from "../lib/api";
 
-const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/movies", label: "Movies" },
-  { href: "/theatres", label: "Theatres" },
-  { href: "/screens", label: "Screens" },
-  { href: "/seats", label: "Seat Editor" },
-  { href: "/showtimes", label: "Showtimes" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/bookings", label: "Bookings" },
-  { href: "/reports", label: "Reports" },
-  { href: "/admin-users", label: "Admin Users" },
-  { href: "/login", label: "Login" }
+const NAV_SECTIONS = [
+  {
+    label: "Tonight",
+    links: [
+      { href: "/",          label: "Overview"      },
+      { href: "/showtimes", label: "Showtimes"     },
+      { href: "/bookings",  label: "Bookings"      },
+      { href: "/seats",     label: "Seat Layouts"  }
+    ]
+  },
+  {
+    label: "Cinema setup",
+    links: [
+      { href: "/movies",      label: "Movies"       },
+      { href: "/theatres",    label: "Theatres"     },
+      { href: "/screens",     label: "Screens"      },
+      { href: "/pricing",     label: "Pricing"      },
+      { href: "/reports",     label: "Reports"      },
+      { href: "/admin-users", label: "Admin Users"  }
+    ]
+  }
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
+  const router   = useRouter();
+
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <aside className="sidebar">
-      <Link href="/" className="brand">
-        <span className="admin-mark">BMB</span>
-        <span>
-          <strong>Bhutan Movie Booking</strong>
-          <small>Super admin and theatre admin dashboard</small>
+      {/* Brand */}
+      <Link href="/" className="sidebar-brand">
+        <span className="admin-mark">
+          <img src="/movi-logo.png" alt="Movi logo" />
         </span>
+        <div>
+          <div className="sidebar-name">Movi</div>
+          <div className="sidebar-role">Admin</div>
+          <div className="sidebar-powered">Powered by CUDIS SoftLab</div>
+        </div>
       </Link>
 
-      <nav className="sidebar-nav">
-        {links.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`nav-link ${pathname === link.href ? "active" : ""}`}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
+      <div className="sidebar-shortcuts">
+        <a className="sidebar-shortcut" href="/bookings">Counter desk</a>
+        <a className="sidebar-shortcut secondary" href="/showtimes">Open sales</a>
+      </div>
 
-      <div className="sidebar-footer">
-        <div className="sidebar-note">
-          <strong>Counter-first flow</strong>
-          <small>Manage bookings, pricing, screens, and theatre operations from one place.</small>
+      {/* Nav */}
+      {NAV_SECTIONS.map((section) => (
+        <div key={section.label}>
+          <div className="sidebar-section-label">{section.label}</div>
+          {section.links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`nav-link ${isActive(link.href) ? "active" : ""}`}
+            >
+              {link.label}
+            </Link>
+          ))}
         </div>
+      ))}
 
+      {/* Footer */}
+      <div className="sidebar-footer">
+        <a className="nav-link" href="http://localhost:3000" target="_blank" rel="noreferrer">
+          Customer Site
+        </a>
         <button
-          className="btn secondary"
+          className="btn ghost sm"
+          style={{ width: "100%", marginTop: 8, justifyContent: "center" }}
           onClick={() => {
             clearAdminToken();
             router.push("/login");
@@ -64,3 +89,4 @@ export function AdminSidebar() {
     </aside>
   );
 }
+
